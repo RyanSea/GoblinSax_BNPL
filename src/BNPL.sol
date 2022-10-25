@@ -67,13 +67,16 @@ contract BNPL is IERC721Receiver {
     /// @param price of purchase
     /// @param downpayment for purchase
     /// @param fee for GoblinSax
-    /// @param gas fee
+    /// @param tranches for repayment
+    /// @param setup_fee including gas for initiating loan
     /// @param market enum
     struct Purchase {
         address borrower;
         uint price;
         uint downpayment;
         uint fee;
+        Tranch[] tranches;
+        uint setup_fee;
         uint gas;
         Market market;
     }
@@ -84,6 +87,13 @@ contract BNPL is IERC721Receiver {
     struct Tranche {
         uint deadline;
         uint minimum;
+    }
+
+    /// @notice nft markets
+    enum Market {
+        sudoswap,
+        seaport, 
+        zora
     }
 
     /// @notice NFTfi offer
@@ -98,11 +108,18 @@ contract BNPL is IERC721Receiver {
         address referrer;
     }
 
-    /// @notice nft markets
-    enum Market {
-        sudoswap,
-        seaport, 
-        zora
+    /// @notice NFTfi signature
+    struct Signature {
+        uint256 nonce;
+        uint256 expiry;
+        address signer;
+        bytes signature;
+    }
+
+    /// @notice NFTfi <-> GoblinSax term settings
+    struct BorrowerSettings {
+        address revenueSharePartner;
+        uint16 referralFeeInBasisPoints;
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -132,14 +149,19 @@ contract BNPL is IERC721Receiver {
     /// @param purchase params
     /// temp: permission
     function createLoan(Offer memory offer, Purchase memory purchase) public {
-        // transfer downpayment + fee + gas from borrower..
+        // todo: transfer downpayment + setup fee from borrower..
 
-        // buy nft..
+        // todo: buy nft..
 
         // approve NFTfi
         IERC721(purchase.nft).approve(address(nftfi), purchase.id);
 
-        // create nftfi loan..
+        // todo: create Signature (param or inline?)..
+
+        // todo: create BorrowerSettings (param or state?)..
+
+        // todo: create NFTfi loan..
+        /* nftfi.acceptOffer(offer, signature, settings); */
 
         // increment id & save to memory
         uint _id = ++id;
@@ -151,26 +173,7 @@ contract BNPL is IERC721Receiver {
         uint duration = offer.loanDuration - .5 days;
 
         uint expiration = duration + block.timestamp;
-
-        // create payment tranches
-        // temp: discuss number of tranches (5 is arbitrary)
-        Tranche[] memory tranches = new Tranch[](5);
-
-        uint time;
-        uint amount;
-        for (uint i; i < 5; ) {
-            // temp: account for percentage error
-            // temp: discuss how to set minimums (e.g. higher minimums at start of loan)
-            // temp: account for downpayment when calculating tranches
-            time = duration / 5 * (i + 1);
             
-            amount = offer.maximumRepaymentAmount / 5 * (i + 1);
-
-            tranches[i] = Tranche({ deadline : time + block.timestamp, minimum : amount });
-
-            unchecked { ++i; }
-        }
-
         // create GoblinSax loan data
         Loan memory new_loan = Loan({
             borrower : purchase.borrower,
@@ -179,16 +182,16 @@ contract BNPL is IERC721Receiver {
             nftfi_id : nftfi_id,
             fee : purchase.fee,
             payoff : offer.maximumRepaymentAmount,
-            payed : purchase.downpayment, // temp: subtract fee
+            payed : purchase.downpayment, 
             expiration : expiration,
-            tranches : tranches,
+            tranches : purchase.tranches,
             denomination : offer.loanERC20Denomination
         });
 
         // save id => loan
         loan[_id] = new_loan;
 
-        // create vault token & transfer to borrower..
+        // todo: create vault token & transfer to borrower..
 
         emit LoanCreated(puchase.borrower, _id, nftfi_id, purchase.nft, purchase.id);
     }
