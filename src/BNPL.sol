@@ -8,10 +8,11 @@ import "nftfi/interfaces/IDirectLoanCoordinator.sol";
 
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/token/ERC721/IERC721.sol";
+import "openzeppelin/token/ERC721/IERC721Receiver.sol";
 
 /// @title GoblinSax NFT BNPL
 /// @author Autocrat :)
-contract BNPL {
+contract BNPL is IERC721Receiver {
 
     /*///////////////////////////////////////////////////////////////
                               INITIALIZATION
@@ -45,6 +46,7 @@ contract BNPL {
     /// @param fee for GoblinSax, calculated with each payment (uint224 to pack into NFTfi's uint32 id)
     /// @param payoff amount, uncluding NFTfi fee, to fully payoff loan
     /// @param payed by borrower so far
+    /// @param expiration of loan before default
     /// @param denomination of token for NFTfi loan
     struct Loan {
         address nft;
@@ -53,6 +55,7 @@ contract BNPL {
         uint224 fee;
         uint payoff;
         uint payed;
+        uint expiration;
         IERC20 denomination;
     }
 
@@ -84,11 +87,49 @@ contract BNPL {
     }
 
     /*///////////////////////////////////////////////////////////////
+                                  EVENTS
+    ///////////////////////////////////////////////////////////////*/
+    
+    event LoanCreated(
+        address indexed borrower, 
+        uint indexed _id, 
+        uint32 indexed nftfi_id, 
+        address nft, 
+        uint id
+    );
+
+    /*///////////////////////////////////////////////////////////////
                                 LOAN LOGIC
     ///////////////////////////////////////////////////////////////*/
 
-    function createLoan(Purchase memory purchase) public {
+    function createLoan(/* Offer memory offer, */ Purchase memory purchase) public {
+        //buy..
 
+        //nftfi..
+
+        // increment id & save to memory
+        uint _id = ++id;
+
+        // get NFTfi loan id
+        uint32 nftfi_id = nftfi_coordinator.totalNumLoans();
+
+
+
+        emit LoanCreated(puchase.borrower, _id, nftfi_id, purchase.nft, purchase.id);
     }
+
+    /*///////////////////////////////////////////////////////////////
+                             ERC721 RECEIVER
+    ///////////////////////////////////////////////////////////////*/
+
+    function onERC721Received(
+        address, 
+        address, 
+        uint, 
+        bytes calldata
+    ) external pure returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
 
 }
