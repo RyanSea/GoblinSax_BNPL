@@ -105,6 +105,9 @@ contract BNPL is IERC721Receiver {
     function createLoan(/* Offer memory offer, */ Purchase memory purchase) public {
         //buy..
 
+        // approve NFTfi
+        IERC721(purchase.nft).approve(address(nftfi), purchase.id);
+
         //nftfi..
 
         // increment id & save to memory
@@ -112,8 +115,6 @@ contract BNPL is IERC721Receiver {
 
         // get NFTfi loan id
         uint32 nftfi_id = nftfi_coordinator.totalNumLoans();
-
-
 
         emit LoanCreated(puchase.borrower, _id, nftfi_id, purchase.nft, purchase.id);
     }
