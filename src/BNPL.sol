@@ -103,12 +103,12 @@ contract BNPL is IERC721Receiver {
     ///////////////////////////////////////////////////////////////*/
 
     function createLoan(/* Offer memory offer, */ Purchase memory purchase) public {
-        //buy...
+        //buy..
 
         // approve NFTfi
         IERC721(purchase.nft).approve(address(nftfi), purchase.id);
 
-        //nftfi...
+        //nftfi..
 
         // increment id & save to memory
         uint _id = ++id;
