@@ -167,6 +167,8 @@ contract BNPL is IERC721Receiver {
             amount = offer.maximumRepaymentAmount / 5 * (i + 1);
 
             tranches[i] = Tranche({ deadline : time + block.timestamp, minimum : amount });
+
+            unchecked { ++i; }
         }
 
         // create GoblinSax loan data
@@ -187,8 +189,6 @@ contract BNPL is IERC721Receiver {
         loan[_id] = new_loan;
 
         // create vault token & transfer to borrower..
-
-        unchecked { ++i; }
 
         emit LoanCreated(puchase.borrower, _id, nftfi_id, purchase.nft, purchase.id);
     }
