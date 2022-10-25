@@ -3,6 +3,8 @@ pragma solidity ^0.8.13;
 
 import "./interfaces/IDirectLoanFixedOffer.sol";
 
+import "./auth/GoblinOwned.sol";
+
 /// @dev added totalNumLoans getter to retrieve NFTfi loan id
 import "nftfi/interfaces/IDirectLoanCoordinator.sol";
 
@@ -12,16 +14,19 @@ import "openzeppelin/token/ERC721/IERC721Receiver.sol";
 
 /// @title GoblinSax NFT BNPL
 /// @author Autocrat :)
-contract BNPL is IERC721Receiver {
+contract BNPL is GoblinOwned, IERC721Receiver {
 
     /*///////////////////////////////////////////////////////////////
                               INITIALIZATION
     ///////////////////////////////////////////////////////////////*/
 
-    constructor(address _nftfi, address _nftfi_coordinator) {
+    constructor(
+        address _nftfi, 
+        address _nftfi_coordinator,
+        address _goblinsax
+    ) GoblinOwned(_goblinsax) {
         nftfi = IDirectLoanFixedOffer(_nftfi);
         nftfi = IDirectLoanCoordinator(_nftfi_coordinator);
-        goblinsax = msg.sender;
     }
 
     /// @notice NFTfi's DirectLoanFixedOffer contract
@@ -29,9 +34,6 @@ contract BNPL is IERC721Receiver {
 
     /// @notice NFTfi's DirectLoanCoordinator contract
     IDirectLoanCoordinator public nftfi_coordinator;
-
-    /// @notice GoblinSax wallet
-    address public goblinsax;
 
     /// @notice GoblinSax loan id
     uint id;
@@ -122,6 +124,9 @@ contract BNPL is IERC721Receiver {
         uint16 referralFeeInBasisPoints;
     }
 
+    /// @notice fallback
+    receive() external payable {}
+
     /*///////////////////////////////////////////////////////////////
                                   EVENTS
     ///////////////////////////////////////////////////////////////*/
@@ -147,8 +152,7 @@ contract BNPL is IERC721Receiver {
     /// @notice purchases nft & creates GoblinSax + NFTfi loan
     /// @param offer of from NFTfi
     /// @param purchase params
-    /// temp: permission
-    function createLoan(Offer memory offer, Purchase memory purchase) public {
+    function createLoan(Offer memory offer, Purchase memory purchase) public permissioned {
         // todo: transfer downpayment + setup fee from borrower..
 
         // todo: buy nft..
