@@ -72,6 +72,8 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param tranches for repayment
     /// @param setup_fee including gas for initiating loan
     /// @param market enum
+    /// @param signature struct for NFTfi
+    /// @param borrower_settings struct for NFTfi
     struct Purchase {
         address borrower;
         uint price;
@@ -81,9 +83,12 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         uint setup_fee;
         uint gas;
         Market market;
+        Signature signature;
+        BorrowerSettings borrower_settings;
     }
 
     /// @notice payment tranche
+    /// @dev should be stored in chronological order
     /// @param deadline to pay
     /// @param minimum amount needed to be payed by deadline
     struct Tranche {
@@ -110,6 +115,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         address referrer;
     }
 
+    /// todo: move to interface
     /// @notice NFTfi signature
     struct Signature {
         uint256 nonce;
@@ -118,6 +124,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         bytes signature;
     }
 
+    // todo: move to interface
     /// @notice NFTfi <-> GoblinSax term settings
     struct BorrowerSettings {
         address revenueSharePartner;
@@ -153,19 +160,21 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param offer of from NFTfi
     /// @param purchase params
     function createLoan(Offer memory offer, Purchase memory purchase) public permissioned {
-        // todo: transfer downpayment + setup fee from borrower..
+        // transfer initial payment from borrower
+        // review: where to transfer initial payment
+        IERC20(offer.loanERC20Denomination).transferFrom(
+            purchase.borrower, 
+            address(this), 
+            purchase.downpayment + purchase.setup_fee
+        );
 
         // todo: buy nft..
 
         // approve NFTfi
         IERC721(purchase.nft).approve(address(nftfi), purchase.id);
 
-        // todo: create Signature (param or inline?)..
-
-        // todo: create BorrowerSettings (param or state?)..
-
-        // todo: create NFTfi loan..
-        /* nftfi.acceptOffer(offer, signature, settings); */
+        // create NFTfi loan
+        nftfi.acceptOffer(offer, purchase.signature, purchase.borrower_settings);
 
         // increment id & save to memory
         uint _id = ++id;
@@ -173,10 +182,8 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // get NFTfi loan id
         uint32 nftfi_id = nftfi_coordinator.totalNumLoans();
 
-        // set GoblinSax loan duration to 12 hours before NFTfi loan expires
-        uint duration = offer.loanDuration - .5 days;
-
-        uint expiration = duration + block.timestamp;
+        // set GoblinSax loan expiration to 12 hours before NFTfi loan expires
+        uint expiration = offer.loanDuration + block.timestamp - .5 days;
             
         // create GoblinSax loan data
         Loan memory new_loan = Loan({
@@ -198,6 +205,46 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // todo: create vault token & transfer to borrower..
 
         emit LoanCreated(puchase.borrower, _id, nftfi_id, purchase.nft, purchase.id);
+    }
+
+    /*///////////////////////////////////////////////////////////////
+                                GOBLINSAX
+    ///////////////////////////////////////////////////////////////*/
+
+    /// @notice checks if loan is in default
+    /// @param _id of loan
+    /// @return defaulting bool
+    /// @return amount in default
+    /// @return elapsed seconds since first default
+    function isDefaulting(uint _id) public view 
+    returns(
+        bool defaulting, 
+        uint amount, 
+        uint elapsed
+    ) {
+        // save loan to memory
+        Loan memory _loan = loan[_id];
+
+        // declare tranche variable
+        Tranche memory tranche;
+
+        // iterate through tranches
+        for (uint i; i < _loan.tranches.length; ) {
+            tranche = _loan.tranches[i];
+
+            // if borrower hasn't payed minimum by deadline
+            if (block.timestamp >= tranche.deadline && _loan.payed < tranches.minimum) {
+                defaulting = true;
+
+                amount += tranches.minimum - _loan.payed;
+
+                elapsed += block.timestamp - tranche.deadline;
+            } else {
+                break;
+            }
+
+            unchecked { ++i; }
+        }
     }
 
     /*///////////////////////////////////////////////////////////////
