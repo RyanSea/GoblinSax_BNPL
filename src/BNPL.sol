@@ -159,8 +159,8 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param offer of from NFTfi
     /// @param purchase params
     function createLoan(Offer memory offer, Purchase memory purchase) public permissioned {
-        // transfer initial payment from borrower
         // review: where to transfer initial payment
+        // transfer initial payment from borrower
         IERC20(offer.loanERC20Denomination).transferFrom(
             purchase.borrower, 
             address(this), 
@@ -234,18 +234,18 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
             // if borrower hasn't payed minimum by deadline
             if (block.timestamp >= tranche.deadline && _loan.payed < tranche.minimum) {
+                amount = tranche.minimum - _loan.payed;
+                
                 // only assign on first tranche default
                 if (!defaulting) {
                     defauling = true;
 
                     elapsed = block.timestamp - tranche.deadline;
                 }
-
-                amount = tranche.minimum - _loan.payed;
             } else {
+                // end loop to avoid needless checks
                 break;
             }
-
             unchecked { ++i; }
         }
     }
