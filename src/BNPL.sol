@@ -69,7 +69,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param price of purchase
     /// @param downpayment for purchase
     /// @param fee for GoblinSax
-    /// @param tranches for repayment
+    /// @param tranches for repayment @dev should be in chronological order
     /// @param setup_fee including gas for initiating loan
     /// @param market enum
     /// @param signature struct for NFTfi
@@ -88,7 +88,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     }
 
     /// @notice payment tranche
-    /// @dev should be stored in chronological order
     /// @param deadline to pay
     /// @param minimum amount needed to be payed by deadline
     struct Tranche {
@@ -212,12 +211,13 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     ///////////////////////////////////////////////////////////////*/
 
     /// @notice checks if loan is in default
+    /// @dev tranches must be in chronological order
     /// @param _id of loan
     /// @return defaulting bool
     /// @return amount in default
     /// @return elapsed seconds since first default
     function isDefaulting(uint _id) public view 
-    returns(
+    returns (
         bool defaulting, 
         uint amount, 
         uint elapsed
@@ -233,12 +233,15 @@ contract BNPL is GoblinOwned, IERC721Receiver {
             tranche = _loan.tranches[i];
 
             // if borrower hasn't payed minimum by deadline
-            if (block.timestamp >= tranche.deadline && _loan.payed < tranches.minimum) {
-                defaulting = true;
+            if (block.timestamp >= tranche.deadline && _loan.payed < tranche.minimum) {
+                // only assign on first tranche default
+                if (!defaulting) {
+                    defauling = true;
 
-                amount += tranches.minimum - _loan.payed;
+                    elapsed = block.timestamp - tranche.deadline;
+                }
 
-                elapsed += block.timestamp - tranche.deadline;
+                amount = tranche.minimum - _loan.payed;
             } else {
                 break;
             }
