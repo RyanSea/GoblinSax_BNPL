@@ -22,7 +22,8 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     constructor(
         address _nftfi, 
         address _nftfi_coordinator,
-        address _goblinsax
+        address _goblinsax,
+        address _nft_factory
     ) GoblinOwned(_goblinsax) {
         nftfi = IDirectLoanFixedOffer(_nftfi);
         nftfi_coordinator = IDirectLoanCoordinator(_nftfi_coordinator);
@@ -33,6 +34,8 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
     /// @notice NFTfi's DirectLoanCoordinator contract
     IDirectLoanCoordinator public nftfi_coordinator;
+
+    
 
     /// @notice GoblinSax loan id
     uint id;
@@ -222,7 +225,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         loan[_id].denomination.transferFrom(msg.sender, goblinsax, amount);
 
         // add payment to loan
-        loan[_id].payment += payment;
+        loan[_id].payed += payment;
 
         emit PaymentMade(_id, msg.sender, amount);
     }
@@ -240,7 +243,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         IERC20(_loan.denomination).transferFrom(goblinsax, address(this), _loan.owed);
 
         // approve NFTfi 
-        IERC20(_loan.denomination).approve(nftfi, _loan.owed);
+        IERC20(_loan.denomination).approve(address(nftfi), _loan.owed);
         
         // payoff NFTfi loan
         nftfi.payBackLoan(_loan.nftfi_id);
@@ -253,13 +256,14 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     ///////////////////////////////////////////////////////////////*/
     
     // todo: decide on scaleable implementation..
-    function marketSelector(
+    /* function marketSelector(
         Purchase memory purchase, 
         address nft, 
         uint _id
     ) internal returns (bool) {
         require(market[purchase.market] != address(0), "MARKET_UNRECOGNIZED");
-    }
+    } 
+    */
 
     // temp: Zora buyer for PoC
     function zoraBuyer(
@@ -277,7 +281,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         IMarketInterface(zora).fillAsk(
             nft,
             _id,
-            purchase.denomination,
+            address(purchase.denomination),
             purchase.price,
             goblinsax // set GS as finder
         );
@@ -291,7 +295,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @notice defualts loan and 
     function initiateDefault(uint _id) public permissioned {
         // get default params
-        (bool defaulting, uint amount, uint elapsed) = isDefaulting(_id);
+        /* (bool defaulting, uint amount, uint elapsed) = isDefaulting(_id); */
 
         // save loan to memory
         Loan memory _loan = loan[_id];

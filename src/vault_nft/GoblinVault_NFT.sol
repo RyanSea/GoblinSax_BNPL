@@ -33,18 +33,22 @@ contract GoblinVault_NFT is ERC721, GoblinOwned {
 
     string public baseURI;
 
-    /*///////////////////////////////////////////////////////////////
-                              INITIALIZATION
-    ///////////////////////////////////////////////////////////////*/
+    uint constant public id = 1;
 
     /*///////////////////////////////////////////////////////////////
                                 GOBLINSAX
     ///////////////////////////////////////////////////////////////*/
 
-    /// @notice sets new baseURI
-    /// @param uri to be set
-    function setURI(string memory uri) public permissioned {
-        baseURI = uri;
+    /// @notice mints nft
+    /// @param borrower address
+    function mint(address borrower) public permissioned {
+        _mint(borrower, id);
+    }
+
+    /// @notice burns nft on default
+    /// note: can only be run by BNPL contract in the event of default
+    function defaultLoan() public permissioned {
+        _burn(id);
     }
 
 }
