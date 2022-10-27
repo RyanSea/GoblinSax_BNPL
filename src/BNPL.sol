@@ -54,7 +54,10 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @notice market name => market contract
     mapping(string => address) public market;
 
+    mapping(uint => Tranche[]) public tranches;
+
     /// @notice GoblinSax loan
+    /// @dev payment tranches (Tranche[]) are stored in the tranches mapping & are required
     /// @param nft contract address
     /// @param id of nft
     /// @param nftfi_id NFTfi's loan id
@@ -63,7 +66,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param payed by borrower so far
     /// @param expiration of loan before default
     /// @param terms for default
-    /// @param tranches for repayment
     /// @param vault_nft GoblinSax loan receipt 
     /// @param denomination of token for NFTfi loan
     struct Loan {
@@ -76,7 +78,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         uint payed;
         uint expiration;
         DefaultTerms terms;
-        Tranche[] tranches;
         IGoblinVault_NFT vault_nft;
         IERC20 denomination;
     }
@@ -196,32 +197,34 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // set GoblinSax loan expiration to 12 hours before NFTfi loan expires
         uint expiration = offer.loanDuration + block.timestamp - .5 days;
 
-        // todo: create vault token & transfer to borrower..
-        // create vault nft
+        // create vault token & transfer to borrower
         IGoblinVault_NFT vault_nft = nft_factory.createNFT(
             offer.nftCollateralContract, 
             offer.nftCollateralId,
             purchase.borrower
         );
             
-        // create GoblinSax loan data
-        Loan memory new_loan = Loan({
-            borrower : purchase.borrower,
-            nft : offer.nftCollateralContract,
-            id : offer.nftCollateralId,
-            nftfi_id : nftfi_id,
-            fee : purchase.fee,
-            owed : offer.maximumRepaymentAmount,
-            payed : purchase.downpayment, 
-            expiration : expiration,
-            terms : purchase.terms,
-            tranches : purchase.tranches,
-            vault_nft : vault_nft,
-            denomination : IERC20(offer.loanERC20Denomination)
-        });
+        // initialize loan
+        Loan memory new_loan; 
+        new_loan.borrower = purchase.borrower;
+        new_loan.nft = offer.nftCollateralContract;
+        new_loan.id = offer.nftCollateralId;
+        new_loan.nftfi_id = nftfi_id;
+        new_loan.fee = purchase.fee;
+        new_loan.owed = offer.maximumRepaymentAmount;
+        new_loan.payed = purchase.downpayment;
+        new_loan.expiration = expiration;
+        new_loan.terms = purchase.terms;
+        new_loan.vault_nft = vault_nft;
+        new_loan.denomination = IERC20(offer.loanERC20Denomination);
 
         // save id => loan
         loan[_id] = new_loan;
+
+        // store memory tranches to storage 
+        // note: can't copy array of structs to storage in solidity
+        storeTranches(_id, purchase.tranches);
+
 
         emit LoanCreated(_id, new_loan);
     }
@@ -300,11 +303,13 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     */
 
     // temp: Zora buyer for POC
+
+    /// @notice buys nft from Zora
     function zoraBuyer(
         Purchase memory purchase, 
         address nft, 
         uint _id
-    ) internal {
+    ) private {
         // save Zora contract to memory
         address zora = market["zora"];
 
@@ -326,6 +331,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     ///////////////////////////////////////////////////////////////*/
     
     /// review: how to liquidate loan receipt
+
     /// @notice defualts loan and 
     function initiateDefault(uint _id) public permissioned {
         // get default params
@@ -355,7 +361,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     }
 
     /*///////////////////////////////////////////////////////////////
-                            INTERNAL ACCOUNTING
+                            INTERNAL LOGIC
     ///////////////////////////////////////////////////////////////*/
 
     /// @notice checks if loan is in default
@@ -379,16 +385,19 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // declare tranche variable
         Tranche memory tranche;
 
+        // save tranches to memory
+        Tranche[] memory _tranches = tranches[_id];
+
         // iterate through tranches
-        for (uint i; i < _loan.tranches.length; ) {
-            tranche = _loan.tranches[i];
+        for (uint i; i < _tranches.length; ) {
+            tranche = _tranches[i];
 
             // if borrower hasn't payed minimum by deadline
             if (_loan.payed < tranche.minimum && block.timestamp >= tranche.deadline) {
                 amount = tranche.minimum - _loan.payed;
                 
                 // only assign on first tranche default
-                if (elapsed = 0) {
+                if (elapsed == 0) {
                     elapsed = block.timestamp - tranche.deadline;
                 }
             } else {
@@ -396,7 +405,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
                 if (elapsed > _loan.terms.maximum_time && amount > _loan.terms.maximum_amount) {
                     defaulting = true;
                 }
-
                 // end loop to avoid needless checks
                 break;
             }
@@ -404,6 +412,28 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         }
 
     }
+    
+    /// temp: need to optimize
+
+    /// @notice saves memory tranches to storage
+    /// @dev since tranches need to be in chronological order, the frontend should call
+    ///      createLoan with tranches in the same order to avoid confusion — this
+    ///      function uses .push to store each tranche in reverse order
+    /// @param _id of loan
+    /// @param _tranches for payment
+    function storeTranches(uint _id, Tranche[] memory _tranches) private {
+        uint _i;
+        for (uint i = _tranches.length; i > 0;) {
+            tranches[_id].push(_tranches[_i]);
+
+            unchecked {
+                --i;
+                ++_i;
+            }
+        }
+    }
+
+
 
     /// todo: add public sortTranches as a safety net / borrower assurance in the event tranches aren't sorted chronologically..
 
