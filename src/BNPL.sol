@@ -83,6 +83,8 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     }
 
     /// @notice purchase params
+    /// @param nft contract
+    /// @param id of nft
     /// @param borrower for GoblinSax BNPL
     /// @param price of purchase
     /// @param downpayment for purchase
@@ -93,7 +95,10 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param market name
     /// @param signature struct for NFTfi
     /// @param borrower_settings struct for NFTfi
+
     struct Purchase {
+        address nft;
+        uint id;
         address borrower;
         uint price;
         uint downpayment;
@@ -105,7 +110,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         string market;
         IDirectLoanFixedOffer.Signature signature;
         IDirectLoanFixedOffer.BorrowerSettings borrower_settings;
-
         IERC20 denomination;
     }
 
@@ -176,10 +180,10 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
         // temp: using Zora for POC
         // buy nft
-        zoraBuyer(purchase, offer.nftCollateralContract, offer.nftCollateralId);
+        zoraBuyer(purchase);
 
         // approve NFTfi
-        IERC721(offer.nftCollateralContract).approve(address(nftfi), offer.nftCollateralId);
+        IERC721(purchase.nft).approve(address(nftfi), purchase.id);
 
         // create NFTfi loan
         nftfi.acceptOffer(offer, purchase.signature, purchase.borrower_settings);
@@ -194,6 +198,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // get NFTfi loan id
         uint32 nftfi_id = nftfi_coordinator.totalNumLoans();
 
+        // review: the appropriate deadline for GS loan relative to NFTfi loan
         // set GoblinSax loan expiration to 12 hours before NFTfi loan expires
         uint expiration = offer.loanDuration + block.timestamp - .5 days;
 
@@ -224,7 +229,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // store memory tranches to storage 
         // note: can't copy array of structs to storage in solidity
         storeTranches(_id, purchase.tranches);
-
 
         emit LoanCreated(_id, new_loan);
     }
@@ -306,9 +310,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
     /// @notice buys nft from Zora
     function zoraBuyer(
-        Purchase memory purchase, 
-        address nft, 
-        uint _id
+        Purchase memory purchase
     ) private {
         // save Zora contract to memory
         address zora = market["zora"];
@@ -318,8 +320,8 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
         // buy nft
         IMarketInterface(zora).fillAsk(
-            nft,
-            _id,
+            purchase.nft,
+            purchase.id,
             address(purchase.denomination),
             purchase.price,
             goblinsax // set GS as finder for potential fee
@@ -335,7 +337,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @notice defualts loan and 
     function initiateDefault(uint _id) public permissioned {
         // get default params
-        // note: also reverst is loan  doesn't exist
+        // note: isDefault reverts is loan doesn't exist
         (bool defaulting, , ) = isDefaulting(_id);
 
         // save loan to memory
@@ -354,8 +356,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
         // transfer receipt to GoblinSax
         smartnft.safeTransferFrom(address(this), goblinsax, _loan.nftfi_id);
-
-        loan[_id].borrower = goblinsax;
 
         emit LoanDefaulted(_id, _loan.owed, _loan.owed - _loan.payed);
     }
@@ -433,10 +433,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         }
     }
 
-
-
     /// todo: add public sortTranches as a safety net / borrower assurance in the event tranches aren't sorted chronologically..
-
 
     /*///////////////////////////////////////////////////////////////
                              ERC721 RECEIVER
