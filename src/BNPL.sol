@@ -6,6 +6,7 @@ import "./auth/GoblinOwned.sol";
 import "./interfaces/IDirectLoanFixedOffer.sol";
 import "./interfaces/IMarketInterface.sol";
 import "./interfaces/IDirectLoanCoordinator.sol";
+import "./interfaces/IGoblinVault_NFT.sol";
 
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/token/ERC721/IERC721.sol";
@@ -23,10 +24,13 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         address _nftfi, 
         address _nftfi_coordinator,
         address _goblinsax,
-        address _nft_factory
+        address _nft_factory,
+        address _smartnft
     ) GoblinOwned(_goblinsax) {
         nftfi = IDirectLoanFixedOffer(_nftfi);
         nftfi_coordinator = IDirectLoanCoordinator(_nftfi_coordinator);
+        nft_factory = IGoblinVault_NFT(_nft_factory);
+        smartnft = IERC721(_smartnft);
     }
 
     /// @notice NFTfi's DirectLoanFixedOffer contract
@@ -35,7 +39,11 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @notice NFTfi's DirectLoanCoordinator contract
     IDirectLoanCoordinator public nftfi_coordinator;
 
-    
+    /// @notice BNPL vault token factory
+    IGoblinVault_NFT public nft_factory;
+
+    /// @notice NFTfi's SmartNFT contract
+    IERC721 public smartnft;
 
     /// @notice GoblinSax loan id
     uint id;
@@ -54,9 +62,10 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param owed to NFTfi to fully payoff loan
     /// @param payed by borrower so far
     /// @param expiration of loan before default
+    /// @param terms for default
     /// @param tranches for repayment
+    /// @param vault_nft GoblinSax loan receipt 
     /// @param denomination of token for NFTfi loan
-    /// @param settled bool
     struct Loan {
         address borrower;
         address nft;
@@ -66,9 +75,10 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         uint owed;
         uint payed;
         uint expiration;
+        DefaultTerms terms;
         Tranche[] tranches;
+        IGoblinVault_NFT vault_nft;
         IERC20 denomination;
-        bool settled;
     }
 
     /// @notice purchase params
@@ -76,6 +86,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param price of purchase
     /// @param downpayment for purchase
     /// @param fee for GoblinSax
+    /// @param terms for default
     /// @param tranches for repayment @dev should be in chronological order
     /// @param setup_fee including gas for initiating loan
     /// @param market name
@@ -86,6 +97,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         uint price;
         uint downpayment;
         uint fee;
+        DefaultTerms terms;
         Tranche[] tranches;
         uint setup_fee;
         uint gas;
@@ -104,6 +116,15 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         uint minimum;
     }
 
+    /// review: if exceeding one or both should count as a default
+    /// @notice parameters of a default
+    /// @param maximum_amount that can be in default
+    /// @param maximum_amount to be in default
+    struct DefaultTerms {
+        uint maximum_amount;
+        uint maximum_time;
+    }
+
     /// @notice fallback
     receive() external payable {}
 
@@ -112,18 +133,9 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     ///////////////////////////////////////////////////////////////*/
     
     /// @notice new loan
-    /// @param borrower of loan
     /// @param id of GoblinSax loan
-    /// @param nftfi_id of NFTfi loan
-    /// @param nft contract
-    /// @param nft_id for NFTfi loan
-    event LoanCreated(
-        address indexed borrower, 
-        uint indexed id, 
-        uint32 indexed nftfi_id, 
-        address nft, 
-        uint nft_id
-    );
+    /// @param new_loan struct
+    event LoanCreated(uint indexed id, Loan new_loan);
 
     /// @notice new loan payment
     /// @param id of loan
@@ -161,7 +173,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
             purchase.downpayment + purchase.setup_fee
         );
 
-        // temp: using Zora for PoC
+        // temp: using Zora for POC
         // buy nft
         zoraBuyer(purchase, offer.nftCollateralContract, offer.nftCollateralId);
 
@@ -183,6 +195,14 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
         // set GoblinSax loan expiration to 12 hours before NFTfi loan expires
         uint expiration = offer.loanDuration + block.timestamp - .5 days;
+
+        // todo: create vault token & transfer to borrower..
+        // create vault nft
+        IGoblinVault_NFT vault_nft = nft_factory.createNFT(
+            offer.nftCollateralContract, 
+            offer.nftCollateralId,
+            purchase.borrower
+        );
             
         // create GoblinSax loan data
         Loan memory new_loan = Loan({
@@ -194,17 +214,16 @@ contract BNPL is GoblinOwned, IERC721Receiver {
             owed : offer.maximumRepaymentAmount,
             payed : purchase.downpayment, 
             expiration : expiration,
+            terms : purchase.terms,
             tranches : purchase.tranches,
-            denomination : IERC20(offer.loanERC20Denomination),
-            settled : false
+            vault_nft : vault_nft,
+            denomination : IERC20(offer.loanERC20Denomination)
         });
 
         // save id => loan
         loan[_id] = new_loan;
 
-        // todo: create vault token & transfer to borrower..
-
-        emit LoanCreated(purchase.borrower, _id, nftfi_id, offer.nftCollateralContract, offer.nftCollateralId);
+        emit LoanCreated(_id, new_loan);
     }
 
     /// @notice makes payment to loan
@@ -214,7 +233,10 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // save loan to memory
         Loan memory _loan = loan[_id];
 
-        // note: fee should be made clear on frontend before function call
+        // require loan exists
+        require(loan[_id].borrower != address(0), "NO_LOAN");
+
+        // note: fee should be displayed on frontend before function call
         // save amount - fee
         uint payment = amount - (amount / _loan.fee);
 
@@ -236,10 +258,16 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // save loan to memory
         Loan memory _loan = loan[_id];
 
+        // require loan exists
+        require(_loan.borrower != address(0), "NO_LOAN");
+
         // require loan fulfillment
         require(_loan.payed == _loan.owed, "LOAN_UNFULFILLED");
 
-        // transfer loan denomination this contract
+        // remove loan from storage
+        delete loan[_id];
+
+        // transfer loan denomination to this contract
         IERC20(_loan.denomination).transferFrom(goblinsax, address(this), _loan.owed);
 
         // approve NFTfi 
@@ -247,6 +275,12 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         
         // payoff NFTfi loan
         nftfi.payBackLoan(_loan.nftfi_id);
+
+        // burn vault nft
+        _loan.vault_nft.resolveLoan();
+
+        // transfer loan nft to borrower
+        IERC721(_loan.nft).safeTransferFrom(address(this), _loan.borrower, _loan.id);
 
         emit LoanSettled(_id, _loan.nftfi_id);
     }
@@ -265,7 +299,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     } 
     */
 
-    // temp: Zora buyer for PoC
+    // temp: Zora buyer for POC
     function zoraBuyer(
         Purchase memory purchase, 
         address nft, 
@@ -283,7 +317,7 @@ contract BNPL is GoblinOwned, IERC721Receiver {
             _id,
             address(purchase.denomination),
             purchase.price,
-            goblinsax // set GS as finder
+            goblinsax // set GS as finder for potential fee
         );
     }
 
@@ -291,18 +325,29 @@ contract BNPL is GoblinOwned, IERC721Receiver {
                                 GOBLINSAX
     ///////////////////////////////////////////////////////////////*/
     
-    /// review: how to liquidate loan
+    /// review: how to liquidate loan receipt
     /// @notice defualts loan and 
     function initiateDefault(uint _id) public permissioned {
         // get default params
-        /* (bool defaulting, uint amount, uint elapsed) = isDefaulting(_id); */
+        // note: also reverst is loan  doesn't exist
+        (bool defaulting, , ) = isDefaulting(_id);
 
         // save loan to memory
         Loan memory _loan = loan[_id];
 
-        /* require(elapsed >= <elapse_maximum> && amount >= <default_maximum>, "NOT_DEFAULTING") */ 
+        require(defaulting, "NOT_DEFAULTING");
 
-        // todo: transfer GoblinSax vault NFT from borrower to this contract..
+        // remove loan from storage
+        delete loan[_id];
+
+        // burn vault nft
+        _loan.vault_nft.resolveLoan();
+
+        // mint NFTfi obligation receipt
+        nftfi.mintObligationReceipt(_loan.nftfi_id);
+
+        // transfer receipt to GoblinSax
+        smartnft.safeTransferFrom(address(this), goblinsax, _loan.nftfi_id);
 
         loan[_id].borrower = goblinsax;
 
@@ -328,6 +373,9 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         // save loan to memory
         Loan memory _loan = loan[_id];
 
+        // require loan exists
+        require(_loan.borrower != address(0), "NO_LOAN");
+
         // declare tranche variable
         Tranche memory tranche;
 
@@ -340,20 +388,24 @@ contract BNPL is GoblinOwned, IERC721Receiver {
                 amount = tranche.minimum - _loan.payed;
                 
                 // only assign on first tranche default
-                if (!defaulting) {
-                    defaulting = true;
-
+                if (elapsed = 0) {
                     elapsed = block.timestamp - tranche.deadline;
                 }
             } else {
+                // if amount in default and elapsed time since default exceed maximum
+                if (elapsed > _loan.terms.maximum_time && amount > _loan.terms.maximum_amount) {
+                    defaulting = true;
+                }
+
                 // end loop to avoid needless checks
                 break;
             }
             unchecked { ++i; }
         }
+
     }
 
-    /// todo: add sortTranches as a safety net to sort tranches chronologically in case they weren't on loan creation..
+    /// todo: add public sortTranches as a safety net / borrower assurance in the event tranches aren't sorted chronologically..
 
 
     /*///////////////////////////////////////////////////////////////

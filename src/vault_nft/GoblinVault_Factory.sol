@@ -3,6 +3,8 @@ pragma solidity ^0.8.13;
 
 import "./GoblinVault_NFT.sol";
 
+import "../interfaces/IGoblinVault_NFT.sol";
+
 contract GoblinVault_Factory is GoblinOwned {
 
     /*///////////////////////////////////////////////////////////////
@@ -19,15 +21,20 @@ contract GoblinVault_Factory is GoblinOwned {
                                 CREATE NFT
     ///////////////////////////////////////////////////////////////*/
 
-    function createNFT(address _nft, uint id) public permissioned returns (address) {
+    function createNFT(
+        address _nft, 
+        uint id,
+        address borrower
+    ) public permissioned returns (IGoblinVault_NFT) {
         GoblinVault_NFT nft = new GoblinVault_NFT(
             _nft,
             id,
             goblinsax,
-            baseURI
+            baseURI,
+            borrower
         );
 
-        return address(nft);
+        return IGoblinVault_NFT(address(nft));
     }
 
     /*///////////////////////////////////////////////////////////////

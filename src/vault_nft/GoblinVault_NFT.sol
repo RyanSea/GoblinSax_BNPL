@@ -22,33 +22,30 @@ contract GoblinVault_NFT is ERC721, GoblinOwned {
         address _nft, 
         uint _id,
         address _goblin,
-        string memory _baseURI
+        string memory _baseURI, 
+        address borrower
     ) GoblinOwned(_goblin)
     ERC721(
         "GoblinSax BNPL Vault",
         string(abi.encodePacked("GBSX-", ERC721(_nft).symbol(),"#", Strings.toString(_id)))
     ) {
         baseURI = _baseURI;
+        // mint to borrower
+        _mint(borrower, 1);
     }
 
     string public baseURI;
 
-    uint constant public id = 1;
 
     /*///////////////////////////////////////////////////////////////
                                 GOBLINSAX
     ///////////////////////////////////////////////////////////////*/
 
-    /// @notice mints nft
-    /// @param borrower address
-    function mint(address borrower) public permissioned {
-        _mint(borrower, id);
-    }
 
-    /// @notice burns nft on default
+    /// @notice burns nft on either settlement or default of loan
     /// note: can only be run by BNPL contract in the event of default
-    function defaultLoan() public permissioned {
-        _burn(id);
+    function resolveLoan() public permissioned {
+        _burn(1);
     }
 
 }

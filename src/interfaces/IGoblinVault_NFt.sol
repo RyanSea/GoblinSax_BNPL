@@ -7,7 +7,11 @@ interface IGoblinVault_NFT {
                             GOBLINVAULT FACTORY
     ///////////////////////////////////////////////////////////////*/
 
-    function createNFT(address _nft, uint id) external;
+    function createNFT(
+        address _nft, 
+        uint id, address 
+        borrower
+    ) external returns(IGoblinVault_NFT);
 
     function setURI(string memory uri) external;
 
@@ -15,8 +19,6 @@ interface IGoblinVault_NFT {
                             GOBLINVAULT NFT
     ///////////////////////////////////////////////////////////////*/
 
-    function mint(address borrower) external;
-
-    function defaultLoan() external;
+    function resolveLoan() external;
 
 }

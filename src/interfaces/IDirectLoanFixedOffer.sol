@@ -30,14 +30,17 @@ interface IDirectLoanFixedOffer {
         uint16 referralFeeInBasisPoints;
     }
 
-
+    /// @notice accepts Offer
     function acceptOffer(
         Offer memory _offer,
         Signature memory _signature,
         BorrowerSettings memory _borrowerSettings
     ) external;
 
+    /// @notice pays back loan in full
     function payBackLoan(uint32 _loanId) external;
 
+    /// @notice mins obligation receipt of loan
+    function mintObligationReceipt(uint32 _loanId) external;
 
 }
