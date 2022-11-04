@@ -3,11 +3,18 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 
+import "src/Token.sol";
 
 /// @notice Helpful utils for testing
 contract Utils is Test {
-    bytes32 internal nextUser = keccak256(abi.encodePacked("user address"));
 
+    constructor(Token _token) {
+        token = _token;
+    }
+
+    Token token;
+    bytes32 internal nextUser = keccak256(abi.encodePacked("user address"));
+    
     function getNextUserAddress() external returns (address payable) {
         address payable user = payable(address(uint160(uint256(nextUser))));
         nextUser = keccak256(abi.encodePacked(nextUser));
@@ -21,6 +28,7 @@ contract Utils is Test {
         for (uint256 i = 0; i < userNum; i++) {
             address payable user = this.getNextUserAddress();
             vm.deal(user, 100 ether);
+            token.mint(user, 1000 ether);
             users[i] = user;
         }
 

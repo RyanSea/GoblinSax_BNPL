@@ -39,4 +39,5 @@ interface IDirectLoanCoordinator {
     function isValidLoanId(uint32 _loanId, address _loanContract) external view returns (bool);
 
     function totalNumLoans() external view returns (uint32);
+
 }

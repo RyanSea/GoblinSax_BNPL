@@ -24,13 +24,11 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         address _nftfi, 
         address _nftfi_coordinator,
         address _goblinsax,
-        address _nft_factory,
-        address _smartnft
+        address _nft_factory
     ) GoblinOwned(_goblinsax) {
         nftfi = IDirectLoanFixedOffer(_nftfi);
         nftfi_coordinator = IDirectLoanCoordinator(_nftfi_coordinator);
         nft_factory = IGoblinVault_NFT(_nft_factory);
-        smartnft = IERC721(_smartnft);
     }
 
     /// @notice NFTfi's DirectLoanFixedOffer contract
@@ -41,9 +39,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
 
     /// @notice BNPL vault token factory
     IGoblinVault_NFT public nft_factory;
-
-    /// @notice NFTfi's SmartNFT contract
-    IERC721 public smartnft;
 
     /// @notice GoblinSax loan id
     uint id;
@@ -355,7 +350,11 @@ contract BNPL is GoblinOwned, IERC721Receiver {
         nftfi.mintObligationReceipt(_loan.nftfi_id);
 
         // transfer receipt to GoblinSax
-        smartnft.safeTransferFrom(address(this), goblinsax, _loan.nftfi_id);
+        IERC721(nftfi_coordinator.obligationReceiptToken()).safeTransferFrom(
+            address(this),
+            goblinsax,
+            _loan.nftfi_id
+        );
 
         emit LoanDefaulted(_id, _loan.owed, _loan.owed - _loan.payed);
     }

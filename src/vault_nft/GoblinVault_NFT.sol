@@ -8,6 +8,7 @@ import "../auth/GoblinOwned.sol";
 
 import "openzeppelin/utils/Strings.sol";
 
+/// review: should it be soulbound or not? if not then there's a few things todo..
 /// @title GoblinSax BNPL Vault NFT
 /// @notice promissary nft representing a GoblinSax BNPL loan
 contract GoblinVault_NFT is ERC721, GoblinOwned {
@@ -46,6 +47,19 @@ contract GoblinVault_NFT is ERC721, GoblinOwned {
     /// note: can only be run by BNPL contract in the event of default
     function resolveLoan() public permissioned {
         _burn(1);
+    }
+
+    /*///////////////////////////////////////////////////////////////
+                                SOULBOUND
+    ///////////////////////////////////////////////////////////////*/
+
+    /// @notice overrides all transfer calls and reverts
+    function transferFrom(
+        address,
+        address,
+        uint256
+    ) public virtual override {
+        revert("SOULBOUND");
     }
 
 }
