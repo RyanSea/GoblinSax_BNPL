@@ -5,7 +5,6 @@ pragma solidity ^0.8.13;
 
 import "src/Vault/Everest.sol";
 import "src/Vault/VaultManager.sol";
-import "src/Vault/Checker.sol";
 
 import "./utils/Utils.sol";
 
@@ -142,7 +141,7 @@ contract EverestTest is Test {
 
     function testAcceptOffer() public {
         testDeposit();
-        
+
         assertEq(vault1.balanceOf(ryan), 20 ether);
         assertEq(vault1.balanceOf(jorg), 20 ether);
 

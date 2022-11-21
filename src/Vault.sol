@@ -50,18 +50,24 @@ contract Vault is ERC721, IERC1271 ,IERC721Receiver {
     /// @notice vault manager
     address public manager;
 
+    /// @notice whether vault is private
+    bool public private_vault;
+
     constructor(
         address _asset,
         string memory _uri,
         address _NFTFI_DIRECT_LOAN,
         address _NFTFI_COORDINATOR, 
         address _NFTFI_NOTE, 
-        address _manager
+        address _manager,
+        address[] memory whitelist
 
     ) ERC721(
         string(abi.encodePacked("GoblinSax ", IERC20(_asset).symbol(), " Vault")), // e.g. "GoblinSax WETH Vault"
         string(abi.encodePacked("gsax", IERC20(_asset).symbol()))                  // e.g. "gsaxWETH"
     ) {
+
+        //      ASSIGN BASE     //
         asset = IERC20(_asset);
         baseURI = _uri;
         manager = _manager; 
@@ -69,6 +75,20 @@ contract Vault is ERC721, IERC1271 ,IERC721Receiver {
         NFTFI_COORDINATOR = IDirectLoanCoordinator(_NFTFI_COORDINATOR);
         NFTFI_NOTE = IPromissoryNote(_NFTFI_NOTE);
 
+        //      HANDLE WHITELIST        //
+        uint length = whitelist.length;
+
+        if (length > 0) {
+            private_vault = true;
+
+            for(uint i; i < length; ) {
+                whitelisted[whitelist[i]] = true;
+
+                unchecked { ++i; }
+            }
+        }
+
+        //      APPROVE NFTFI       //
         // review: is this how approval should be handled?
         // give NFTfi's DirectLoanFixedOffer.sol unlimited approval
         asset.approve(_NFTFI_DIRECT_LOAN, type(uint256).max);
@@ -98,6 +118,9 @@ contract Vault is ERC721, IERC1271 ,IERC721Receiver {
 
     /// @notice loan id => loan
     mapping(uint => LoanAccepted) public loans;
+
+    /// @notice address => whether it's whitelisted
+    mapping(address => bool) public whitelisted;
 
     /*//////////////////////////////////////////////////////////////
                                STATE PARAMS
@@ -175,39 +198,6 @@ contract Vault is ERC721, IERC1271 ,IERC721Receiver {
                                LOAN UPDATES
     //////////////////////////////////////////////////////////////*/
 
-    /// temp: acceptOffer only used for testing — this logic will be relagated to onERC721Received 
-
-    /// @notice loan offer accepted
-    // function acceptOffer(uint loan_id, uint principal) public {
-    //     // temp: for testing
-    //     asset.burn(address(this), principal);
-
-    //     // save balance to memory
-    //     uint _balance = vault_balance;
-
-    //     // update storage balance
-    //     vault_balance = asset.balanceOf(address(this));
-
-    //     LoanAccepted memory _loan = LoanAccepted(
-    //         IERC721(address(0)),
-    //         0,
-    //         0,
-    //         principal,
-    //         loan_id,
-    //         0,
-    //         0,
-    //         block.timestamp,
-    //         _balance
-    //     );
-
-    //     loans[loan_id] = _loan;
-
-    //     DepositOrWithdraw memory deposit_withdraw;
-
-    //     // update history
-    //     history.push(  VaultAction(deposit_withdraw, _loan, block.timestamp, ActionType.loan) );
-    // }
-
     /// @notice loan repayed
     function loanRepayed(uint _id) public {
         // temp: for testing
@@ -234,9 +224,20 @@ contract Vault is ERC721, IERC1271 ,IERC721Receiver {
     /// @param _id of account / nft
     /// @param amount to deposit
     function deposit(uint _id, uint256 amount) public {
+        // if private vault, require whitelisted depositor
+        // note: went with the latter method
+        // if(private_vault) {
+        //     address account = _exists(_id) ? ownerOf(_id) : msg.sender;
+
+        //     require(whitelisted[account], "NOT_WHITELISTED");
+        // }
+
         asset.transferFrom(msg.sender, address(this), amount);
 
         if (_id == 0) {
+            // if private vault, require sender to be whitelisted before minting LP token
+            if (private_vault) require(whitelisted[msg.sender], "NOT_WHITELISTED");
+            
             // increment id and assign to _id
             _id = ++id;
 
@@ -483,6 +484,14 @@ contract Vault is ERC721, IERC1271 ,IERC721Receiver {
     }
 
     /*//////////////////////////////////////////////////////////////
+                                GOBLINSAX
+    //////////////////////////////////////////////////////////////*/
+
+    function openVault() public /* onlyOwner */{
+        private_vault = false;
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             VAULT SIGNATURE
     //////////////////////////////////////////////////////////////*/
 
@@ -497,5 +506,23 @@ contract Vault is ERC721, IERC1271 ,IERC721Receiver {
         // temp:
         return MAGICVALUE;
 
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                SOULBOUND
+    //////////////////////////////////////////////////////////////*/
+
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 _id, 
+        uint256 batchSize
+    ) internal override {
+        if(private_vault) {
+            revert("SOULBOUND");
+            
+        } else {
+            ERC721._beforeTokenTransfer(from, to, _id , batchSize);
+        }
     }
 }
