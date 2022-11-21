@@ -4,6 +4,21 @@ pragma solidity ^0.8.13;
 /// @notice interface for https://github.com/NFTfi-Genesis/nftfi.eth/blob/main/V2/contracts/loans/direct/loanTypes/DirectLoanFixedOffer.sol
 interface IDirectLoanFixedOffer {
 
+    /// @notice NFTfi loan terms
+    struct LoanTerms {
+        uint256 loanPrincipalAmount;
+        uint256 maximumRepaymentAmount;
+        uint256 nftCollateralId;
+        address loanERC20Denomination;
+        uint32 loanDuration;
+        uint16 loanInterestRateForDurationInBasisPoints;
+        uint16 loanAdminFeeInBasisPoints;
+        address nftCollateralWrapper;
+        uint64 loanStartTime;
+        address nftCollateralContract;
+        address borrower;
+    }
+
     /// @notice NFTfi offer struct
     struct Offer {
         uint256 loanPrincipalAmount;
@@ -40,7 +55,15 @@ interface IDirectLoanFixedOffer {
     /// @notice pays back loan in full
     function payBackLoan(uint32 _loanId) external;
 
+    function adminFeeInBasisPoints() external view returns(uint16);
+
+
+    /// @notice getter for loan id => LoanTerms mapping
+    function loanIdToLoan(uint32 _id) external view returns(LoanTerms memory _loan);
+
     /// @notice mins obligation receipt of loan
     function mintObligationReceipt(uint32 _loanId) external;
+
+    function unpause() external;
 
 }

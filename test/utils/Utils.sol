@@ -8,10 +8,6 @@ import "src/Token.sol";
 /// @notice Helpful utils for testing
 contract Utils is Test {
 
-    constructor(Token _token) {
-        token = _token;
-    }
-
     Token token;
     bytes32 internal nextUser = keccak256(abi.encodePacked("user address"));
     
@@ -28,7 +24,6 @@ contract Utils is Test {
         for (uint256 i = 0; i < userNum; i++) {
             address payable user = this.getNextUserAddress();
             vm.deal(user, 100 ether);
-            token.mint(user, 1000 ether);
             users[i] = user;
         }
 

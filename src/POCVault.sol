@@ -3,15 +3,21 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin/token/ERC20/IERC20.sol";
 
+import "openzeppelin/utils/Strings.sol";
+
 import "./Token.sol";
 
 import "forge-std/Test.sol";
+
+import "solmate/utils/FixedPointMathLib.sol";
 
 contract POCVault {
 
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
+
+    using FixedPointMathLib for uint;
 
     constructor(
         address _asset
@@ -27,6 +33,8 @@ contract POCVault {
     uint vault_balance;
 
     Token public asset;
+
+    uint public total_loans;
 
     /// @notice all deposits, withdraws, accepted loans
     VaultAction[] public history;
@@ -88,7 +96,9 @@ contract POCVault {
 
     /// @notice loan offer accepted
     function acceptOffer(uint _id, uint principal) public {
-        // temp:
+        ++total_loans;
+
+        // temp: for testing
         asset.burn(address(this), principal);
 
         // todo: confirm offer is accepted..
@@ -111,7 +121,7 @@ contract POCVault {
 
     /// @notice loan repayed
     function loanRepayed(uint _id, uint repayment) public {
-        // temp
+        // temp: for testing
         asset.mint(address(this), repayment);
 
         // todo: confirm loan is resolved..
@@ -152,30 +162,18 @@ contract POCVault {
         history.push(VaultAction( DepositOrWithdraw(assets, sender), LoanAccepted(0,0,0), block.timestamp, ActionType.withdraw ));
         
         asset.transfer(sender, assets);
-        
     }
-
-
-    // add all deposits by sender before loan accepted  ✅
-    // subtract any withdraws before loan accepted  ✅
-    // get percentage of sender's deposit used in loan + subtract it from sender's total deposits ✅
-    // distribute loan repayment amount by percentage of deposits used 
-    // factor loan repayment into the principal for the next accepted offer
-    
-    // 1 initalize total assets counter to zero
-    // 2 loop to the first deposit
-    // 3 add deposits / subtract withdraws from total assets counter until loan — save id of *first* loan
-    // 4 get percentage of senders contribution into loan and subtract from total assets counter
-    // 5 loop to the first repayment matching the id of the first loan — save timestamp 
-    // 6 continue until first sender repayment is before next loan — 
-    // ..add repayement percentage to total assets, save timestamp of next repayment & repeat from step 3
 
 
     /*//////////////////////////////////////////////////////////////
                           INTERNAL
     //////////////////////////////////////////////////////////////*/
     
-    function _calculateBalance(address sender) internal view returns (uint balance) {
+    /// review: this function requires repayements to be ordered chronoligically, and breaks if they aren't
+    ///         should this function work even with non-ordered repayments?
+
+    /// @notice reads history of vault and caulcates the balance of account
+    function _calculateBalance(address sender) public view returns (uint balance) {
         // save history to memory
         VaultAction[] memory _history = history;
 
@@ -187,30 +185,31 @@ contract POCVault {
         uint r_idx;
 
         // temp: while it's required to set a static length of the array, 100 is arbitrary and may be too few 
-        Contribution[] memory contributions = new Contribution[](100);
+        Contribution[] memory contributions = new Contribution[](total_loans);
 
         uint loan_counter;
 
         uint contribution;
 
         for ( ; i < _history.length; ++i ) {
-            // if deposit or withdraw, add to sender_balance
+            // if deposit or withdraw, add to account's balance
             if (_history[i].action == ActionType.deposit && _history[i].deposit_withdraw.account == sender) {
-
                 balance += _history[i].deposit_withdraw.amount;
             } else if (_history[i].action == ActionType.withdraw && _history[i].deposit_withdraw.account == sender){
                 balance -= _history[i].deposit_withdraw.amount;
+                // if new loan with a poistive account balance
+            } else if (_history[i].action == ActionType.loan && balance > 0) {
+                // first, factor in any new repayments to account
 
-                // if new loan
-            } else if (_history[i].action == ActionType.loan) {
                 // iterate through resolved loans before caulcating account's contribution to new loan
                 for (; r_idx < _resolved.length; ++r_idx) {
                     // if resolution before new loan
                     if (_resolved[r_idx].time < _history[i].time) {
-                        // check if resolution loan id is a loan account contributed to
+                        // iterate through contributed loans to find a matching loan id that account contributed to
                         for (uint _i; _i < loan_counter; ++_i) {
                             // if resolution id matches id that account has contributed to
-                            if (contributions[_i].loan_id == _resolved[r_idx].loan_id) {                           
+                            if (contributions[_i].loan_id == _resolved[r_idx].loan_id) { 
+                                // add repayment to account's balance                         
                                 balance += _calculateReturn(
                                     contributions[_i].contribution, 
                                     _resolved[r_idx].principal, 
@@ -224,12 +223,13 @@ contract POCVault {
                     }
                 }
                 
+                // after factoring in new repayments to account, calculate contribution to new loan
                 contribution = _calculateContribution(
                     _history[i].loan.principal, 
                     balance, 
                     _history[i].loan.treasury_before_loan
                 );
-    
+                
                 if (contribution > 0) {
                     balance -= contribution;
 
@@ -237,12 +237,11 @@ contract POCVault {
 
                     unchecked { ++loan_counter; }
                 }
-
+                
             }
-         
         }
 
-        // get resolutions after new last loan
+        // after iterating through history, check for any remaining repayements
         for ( ; r_idx < _resolved.length; ++r_idx) {
             // check if resolution loan id is a loan account contributed to
             for (uint _i; _i < loan_counter; ++_i) {
@@ -257,31 +256,42 @@ contract POCVault {
                 } 
             } 
         }
-        
-    }
-
-    function _calculateReturn(
-        uint contribution, 
-        uint principal, 
-        uint repayed
-    ) internal pure returns(uint total_return) {
-        // temp: using * 10 ** 18 to account for lack of floating point nums
-        // todo: integrated a fixed point math library..
-        uint percent_returned = repayed * 10 ** 18 / principal;
-
-        total_return = contribution * percent_returned / 10 ** 18;
     }
 
     function _calculateContribution(
         uint principal,
         uint contributor_balance,
         uint total_assets
-    ) internal pure returns(uint contribution) {
-        uint percent_used = total_assets * 10 ** 18 / principal;
+    ) public pure returns(uint contribution) {
+        uint WAD = 10 ** 30;
 
-        contribution = contributor_balance * 10 ** 18 / percent_used;
+        // note: equivalent to total_assets * 10 ** 18 / principal
+        uint percent_used = total_assets * WAD / principal;//total_assets.mulDivDown(1000000000000000000, principal);
+
+        // // note: equivalent to contributor_balance * 10 ** 18 / percent_used
+        contribution = contributor_balance * WAD / percent_used; //contributor_balance.mulDivDown(1000000000000000000, percent_used);
+        // uint percent_spent = contributor_balance * WAD / principal; 
+        // contribution = contributor_balance * WAD / percent_spent;
     }
+
+    function _calculateReturn(
+        uint contribution, 
+        uint principal, 
+        uint repayed
+    ) public pure returns(uint total_return) {
+
+        uint WAD = 10 ** 30;
+
+        // note: equivalent to repayed * 10 ** 18 / principal
+        uint percent_returned = repayed * WAD / principal;//repayed.mulDivDown(1000000000000000000, principal);
+
+        // note: equivalent contribution * percent_returned / 10 ** 18
+        total_return = contribution * percent_returned / WAD;//contribution.mulWadDown(percent_returned);
+    }
+
+    
 
 }
     
+
 

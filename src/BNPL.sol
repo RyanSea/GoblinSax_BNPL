@@ -90,7 +90,6 @@ contract BNPL is GoblinOwned, IERC721Receiver {
     /// @param market name
     /// @param signature struct for NFTfi
     /// @param borrower_settings struct for NFTfi
-
     struct Purchase {
         address nft;
         uint id;
